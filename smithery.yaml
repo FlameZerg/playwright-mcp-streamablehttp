@@ -22,7 +22,7 @@ startCommand:
           type: "string"
           enum: ["tabs", "install", "pdf", "vision"]
         description: "Additional capabilities to enable"
-        default: []
+        default: ["tabs", "pdf", "vision"]
       outputDir:
         type: "string"
         description: "Directory for output files"
@@ -32,10 +32,10 @@ startCommand:
         enum: ["allow", "omit"]
         description: "Whether to send image responses to the client"
         default: "allow"
-    additionalProperties: false
+    additionalProperties: true
   exampleConfig:
     browserName: "chromium"
     headless: true
-    capabilities: ["tabs", "pdf"]
+    capabilities: ["tabs", "pdf", "vision"]
     outputDir: "/tmp/playwright-output"
     imageResponses: "allow"
