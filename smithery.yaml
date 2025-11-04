@@ -1,0 +1,41 @@
+runtime: "container"
+build:
+  dockerfile: "Dockerfile"
+  dockerBuildPath: "."
+startCommand:
+  type: "http"
+  configSchema:
+    type: "object"
+    properties:
+      browserName:
+        type: "string"
+        enum: ["chromium", "firefox", "webkit"]
+        description: "Browser type to use for automation"
+        default: "chromium"
+      headless:
+        type: "boolean"
+        description: "Run browser in headless mode"
+        default: true
+      capabilities:
+        type: "array"
+        items:
+          type: "string"
+          enum: ["tabs", "install", "pdf", "vision"]
+        description: "Additional capabilities to enable"
+        default: []
+      outputDir:
+        type: "string"
+        description: "Directory for output files"
+        default: "/tmp/playwright-output"
+      imageResponses:
+        type: "string"
+        enum: ["allow", "omit"]
+        description: "Whether to send image responses to the client"
+        default: "allow"
+    additionalProperties: false
+  exampleConfig:
+    browserName: "chromium"
+    headless: true
+    capabilities: ["tabs", "pdf"]
+    outputDir: "/tmp/playwright-output"
+    imageResponses: "allow"
