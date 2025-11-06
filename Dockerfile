@@ -59,6 +59,10 @@ ENV PLAYWRIGHT_MCP_OUTPUT_DIR=/tmp/playwright-output
 # Set the correct ownership for the runtime user on production `node_modules`
 RUN chown -R ${USERNAME}:${USERNAME} node_modules
 
+# 创建持久化目录并设置权限
+RUN mkdir -p /home/${USERNAME}/.cache/ms-playwright-mcp /tmp/playwright-output && \
+  chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/.cache /tmp/playwright-output
+
 USER ${USERNAME}
 
 COPY --from=browser --chown=${USERNAME}:${USERNAME} ${PLAYWRIGHT_BROWSERS_PATH} ${PLAYWRIGHT_BROWSERS_PATH}
@@ -71,6 +75,16 @@ RUN ls -la ${PLAYWRIGHT_BROWSERS_PATH} && \
 # Set environment variables to force binding to all interfaces
 ENV HOST=0.0.0.0
 ENV PORT=8081
+
+# 启用浏览器自动安装功能（如果缺失）
+ENV PLAYWRIGHT_AUTO_INSTALL=true
+
+# 健康检查 - 验证代理服务器可用
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD node -e "const http = require('http'); \
+    http.get('http://localhost:8081/health', (res) => { \
+      process.exit(res.statusCode === 200 ? 0 : 1); \
+    }).on('error', () => process.exit(1));"
 
 # Use proxy server to bind to 0.0.0.0 and forward to Playwright MCP server
 # This works around the server's hardcoded localhost binding

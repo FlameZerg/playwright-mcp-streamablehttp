@@ -19,18 +19,76 @@ console.log(`Environment: NODE_ENV=${process.env.NODE_ENV}, PLAYWRIGHT_BROWSERS_
 // Verify browser installation path exists
 const fs = require('fs');
 const browsersPath = process.env.PLAYWRIGHT_BROWSERS_PATH || '/ms-playwright';
-if (fs.existsSync(browsersPath)) {
-  console.log(`Browser cache found at: ${browsersPath}`);
+const autoInstall = process.env.PLAYWRIGHT_AUTO_INSTALL === 'true';
+
+function checkBrowserInstalled() {
+  if (!fs.existsSync(browsersPath)) {
+    return false;
+  }
   try {
     const files = fs.readdirSync(browsersPath);
-    console.log(`Browser cache contents: ${files.join(', ')}`);
+    // 检查是否有 chromium 目录
+    const hasChromium = files.some(f => f.startsWith('chromium'));
+    if (hasChromium) {
+      console.log(`✅ Browser cache found at: ${browsersPath}`);
+      console.log(`   Contents: ${files.join(', ')}`);
+      return true;
+    }
+    return false;
   } catch (err) {
     console.error(`Failed to read browser cache: ${err.message}`);
+    return false;
   }
-} else {
-  console.warn(`⚠️  Browser cache not found at: ${browsersPath}`);
-  console.warn('Browser may need to be installed on first run');
 }
+
+// 浏览器自动安装功能
+function installBrowserIfNeeded(callback) {
+  if (checkBrowserInstalled()) {
+    callback();
+    return;
+  }
+
+  console.warn(`⚠️  Browser not found at: ${browsersPath}`);
+
+  if (!autoInstall) {
+    console.error('❌ Auto-install is disabled. Please install browser manually.');
+    console.error('   Run: npx playwright-core install chromium');
+    callback();
+    return;
+  }
+
+  console.log('🔧 Auto-installing Chromium browser...');
+  console.log('   This may take 1-2 minutes on first run.');
+
+  const installProcess = spawn('npx', ['-y', 'playwright-core', 'install', '--no-shell', 'chromium'], {
+    stdio: 'inherit',
+    env: { ...process.env }
+  });
+
+  installProcess.on('exit', (code) => {
+    if (code === 0) {
+      console.log('✅ Browser installation completed successfully');
+      if (checkBrowserInstalled()) {
+        callback();
+      } else {
+        console.error('❌ Browser installation succeeded but browser not found');
+        callback();
+      }
+    } else {
+      console.error(`❌ Browser installation failed with code ${code}`);
+      console.error('   Continuing anyway, backend will fail if browser is required');
+      callback();
+    }
+  });
+
+  installProcess.on('error', (err) => {
+    console.error(`❌ Failed to start browser installation: ${err.message}`);
+    callback();
+  });
+}
+
+// 在启动后端之前检查/安装浏览器
+installBrowserIfNeeded(() => {
 
 // Start the actual Playwright MCP server
 const playwrightProcess = spawn('node', ['cli.js', '--headless', '--browser', 'chromium', '--no-sandbox', '--port', BACKEND_PORT], {
@@ -227,13 +285,14 @@ const proxyServer = http.createServer((req, res) => {
   forwardRequest(req, res);
 });
 
-// Wait for backend before starting proxy
-waitForBackend(() => {
-  proxyServer.listen(PORT, HOST, () => {
-    console.log(`Proxy server listening on http://${HOST}:${PORT}`);
-    console.log(`Forwarding requests to http://localhost:${BACKEND_PORT}`);
+  // Wait for backend before starting proxy
+  waitForBackend(() => {
+    proxyServer.listen(PORT, HOST, () => {
+      console.log(`Proxy server listening on http://${HOST}:${PORT}`);
+      console.log(`Forwarding requests to http://localhost:${BACKEND_PORT}`);
+    });
   });
-});
+}); // 结束 installBrowserIfNeeded
 
 // Handle process cleanup
 process.on('SIGTERM', () => {
