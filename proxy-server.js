@@ -12,6 +12,8 @@ const REQUEST_TIMEOUT = 60000; // 60 seconds
 
 let isBackendReady = false;
 let startupTimer = null;
+let activeConnections = 0;
+const MAX_CONCURRENT_CONNECTIONS = 1;
 
 console.log('========================================');
 console.log(`Starting Playwright MCP server proxy on ${HOST}:${PORT}`);
@@ -411,6 +413,38 @@ const proxyServer = http.createServer((req, res) => {
       message: 'Backend is initializing, please retry in a few seconds'
     }));
     return;
+  }
+
+  // 并发连接限制（避免 ETXTBSY 错误）
+  if (isMcpEndpoint && activeConnections >= MAX_CONCURRENT_CONNECTIONS) {
+    console.warn(`⚠️  Connection rejected: ${activeConnections} active connections (max: ${MAX_CONCURRENT_CONNECTIONS})`);
+    res.writeHead(429, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      error: 'Too many concurrent connections',
+      message: 'Another client is currently using the browser. Please wait and try again in a few moments.',
+      activeConnections: activeConnections,
+      maxConnections: MAX_CONCURRENT_CONNECTIONS
+    }));
+    return;
+  }
+
+  // 增加活跃连接计数
+  if (isMcpEndpoint) {
+    activeConnections++;
+    console.log(`✅ Active connections: ${activeConnections}`);
+    
+    // 请求完成后减少计数
+    res.on('finish', () => {
+      activeConnections--;
+      console.log(`✅ Connection closed. Active connections: ${activeConnections}`);
+    });
+    
+    res.on('close', () => {
+      if (activeConnections > 0) {
+        activeConnections--;
+        console.log(`⚠️  Connection aborted. Active connections: ${activeConnections}`);
+      }
+    });
   }
 
   // Forward the request to the actual server
