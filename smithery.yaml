@@ -30,7 +30,7 @@ startCommand:
           type: "string"
           enum: ["tabs", "install", "pdf", "vision"]
         description: "Additional capabilities to enable"
-        default: ["tabs", "pdf"]
+        default: ["tabs", "install", "pdf", "vision"]
       outputDir:
         type: "string"
         description: "Directory for output files"
@@ -41,18 +41,18 @@ startCommand:
         description: "Whether to send image responses to the client"
         default: "allow"
       timeoutAction:
-        type: "integer"
+        type: "number"
         description: "Action timeout in milliseconds"
         default: 30000
       timeoutNavigation:
-        type: "integer"
+        type: "number"
         description: "Navigation timeout in milliseconds"
         default: 60000
     additionalProperties: true
   exampleConfig:
     browserName: "chromium"
     headless: true
-    capabilities: ["tabs", "pdf"]
+    capabilities: ["tabs", "install", "pdf", "vision"]
     outputDir: "/tmp/playwright-output"
     imageResponses: "allow"
     timeoutAction: 30000
