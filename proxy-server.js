@@ -17,7 +17,7 @@ console.log('========================================');
 console.log(`Starting Playwright MCP server proxy on ${HOST}:${PORT}`);
 console.log(`Environment: NODE_ENV=${process.env.NODE_ENV}`);
 console.log(`PLAYWRIGHT_BROWSERS_PATH=${process.env.PLAYWRIGHT_BROWSERS_PATH}`);
-console.log(`CDP_PORT=${CDP_PORT}, BACKEND_PORT=${BACKEND_PORT}`);
+console.log(`BACKEND_PORT=${BACKEND_PORT}`);
 console.log('========================================');
 
 // Verify browser installation path exists
