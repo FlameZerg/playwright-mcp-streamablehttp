@@ -7,8 +7,8 @@ const PORT = process.env.PORT || 8081;
 const HOST = '0.0.0.0';
 const BACKEND_PORT = 8082;
 const STARTUP_TIMEOUT = 60000; // 60 seconds
-const HEALTH_CHECK_INTERVAL = 500; // 500ms
-const REQUEST_TIMEOUT = 120000; // 120 seconds (increased for long operations)
+const HEALTH_CHECK_INTERVAL = 10000; // 10 seconds
+const REQUEST_TIMEOUT = 60000; // 60 seconds
 
 let isBackendReady = false;
 let startupTimer = null;
@@ -112,11 +112,59 @@ cleanupLocks();
 
 // 立即启动后端和代理（不等待浏览器安装）
 
+let chromeProcess = null;  // Chrome CDP 进程
 let playwrightProcess = null;
 let isStarting = false;
 let healthCheckTimer = null;
 let consecutiveFailures = 0;
-const MAX_CONSECUTIVE_FAILURES = 3;
+const MAX_CONSECUTIVE_FAILURES = 2;
+const CDP_PORT = 9222;  // Chrome 调试端口
+
+// 启动单例 Chrome 实例（CDP 模式）
+function startChromeInstance() {
+  if (chromeProcess) {
+    console.log('✅ Chrome instance already running');
+    return;
+  }
+  
+  console.log('🚀 Starting standalone Chrome instance with CDP...');
+  
+  const chromePath = `${browsersPath}/chromium-1198/chrome-linux/chrome`;
+  
+  chromeProcess = spawn(chromePath, [
+    '--remote-debugging-port=' + CDP_PORT,
+    '--user-data-dir=/app/browser-profile',
+    '--no-sandbox',
+    '--headless',
+    '--disable-gpu',
+    '--disable-dev-shm-usage',
+    '--disable-software-rasterizer'
+  ], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    detached: false
+  });
+  
+  chromeProcess.stdout.on('data', (data) => {
+    console.log(`[Chrome] ${data.toString().trim()}`);
+  });
+  
+  chromeProcess.stderr.on('data', (data) => {
+    console.error(`[Chrome Error] ${data.toString().trim()}`);
+  });
+  
+  chromeProcess.on('exit', (code) => {
+    console.error(`Chrome process exited with code ${code}`);
+    chromeProcess = null;
+    // 自动重启
+    setTimeout(() => {
+      console.log('♻️  Restarting Chrome instance...');
+      cleanupLocks();
+      startChromeInstance();
+    }, 3000);
+  });
+  
+  console.log(`✅ Chrome CDP server starting on port ${CDP_PORT}`);
+}
 
 function startPlaywrightBackend() {
   if (playwrightProcess || isStarting) {
@@ -127,19 +175,15 @@ function startPlaywrightBackend() {
   isStarting = true;
   console.log('🚀 Starting Playwright MCP backend...');
   
-  // Start the actual Playwright MCP server
+  // Start the actual Playwright MCP server (connecting to CDP)
   playwrightProcess = spawn('node', [
     'cli.js',
-    '--headless',
-    '--browser', 'chromium',
-    '--no-sandbox',
     '--port', BACKEND_PORT,
-    '--user-data-dir=/app/browser-profile',  // 固定用户数据目录
-    '--shared-browser-context',              // 共享浏览器上下文
-    '--save-session',                        // 保存 MCP 会话状态
-    '--timeout-action=60000',                // 60秒操作超时（增加）
-    '--timeout-navigation=120000',           // 120秒导航超时（增加）
-    '--output-dir=/tmp/playwright-output'    // 输出目录
+    '--cdp-endpoint', `http://localhost:${CDP_PORT}`,  // 连接到 Chrome CDP
+    '--save-session',                                  // 保存 MCP 会话状态
+    '--timeout-action=60000',                          // 60秒操作超时
+    '--timeout-navigation=60000',                      // 60秒导航超时
+    '--output-dir=/tmp/playwright-output'              // 输出目录
   ], {
     stdio: ['ignore', 'pipe', 'pipe']
   });
@@ -242,11 +286,17 @@ function startHealthMonitoring() {
         }
       }
     });
-  }, 30000); // 每 30 秒检查一次
+  }, 10000); // 每 10 秒检查一次
 }
 
-// 启动后端
-startPlaywrightBackend();
+// 先启动 Chrome CDP 实例
+startChromeInstance();
+
+// 等待 Chrome 启动后再启动 Playwright
+setTimeout(() => {
+  console.log('✅ Chrome should be ready, starting Playwright backend...');
+  startPlaywrightBackend();
+}, 5000); // 等待 5 秒让 Chrome 完全启动
 
 // Health check function
 function checkBackendHealth(callback) {
@@ -426,7 +476,8 @@ proxyServer.listen(PORT, HOST, () => {
 process.on('SIGTERM', () => {
   console.log('Shutting down...');
   cleanupLocks();
-  playwrightProcess.kill();
+  if (chromeProcess) chromeProcess.kill();
+  if (playwrightProcess) playwrightProcess.kill();
   proxyServer.close();
   process.exit(0);
 });
@@ -434,11 +485,13 @@ process.on('SIGTERM', () => {
 process.on('SIGINT', () => {
   console.log('Shutting down...');
   cleanupLocks();
-  playwrightProcess.kill();
+  if (chromeProcess) chromeProcess.kill();
+  if (playwrightProcess) playwrightProcess.kill();
   proxyServer.close();
   process.exit(0);
 });
 
 process.on('exit', () => {
   cleanupLocks();
+  if (chromeProcess) chromeProcess.kill();
 });

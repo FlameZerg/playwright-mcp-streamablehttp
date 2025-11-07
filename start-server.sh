@@ -16,5 +16,5 @@ exec node cli.js \
   --shared-browser-context \
   --save-session \
   --timeout-action=60000 \
-  --timeout-navigation=120000 \
+  --timeout-navigation=60000 \
   --output-dir=$PLAYWRIGHT_MCP_OUTPUT_DIR
