@@ -310,7 +310,7 @@ const proxyServer = http.createServer((req, res) => {
       try {
         const mcpRequest = JSON.parse(body);
         
-        // 仅处理 initialize 请求
+        // 处理 initialize 请求
         if (mcpRequest.method === 'initialize') {
           res.writeHead(200, { 
             'Content-Type': 'application/json',
@@ -336,17 +336,30 @@ const proxyServer = http.createServer((req, res) => {
           return;
         }
         
-        // 其他 MCP 请求：返回错误
-        res.writeHead(503, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          jsonrpc: '2.0',
-          id: mcpRequest.id,
-          error: {
-            code: -32000,
-            message: 'Server initializing',
-            data: { status: 'starting' }
-          }
-        }));
+        // 处理 notifications/*（通知类消息，无需响应）
+        if (mcpRequest.method && mcpRequest.method.startsWith('notifications/')) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(''); // 空响应，符合 JSON-RPC 2.0 规范
+          return;
+        }
+        
+        // 其他 MCP 请求：返回错误（仅当有 id 时）
+        if (mcpRequest.id !== undefined) {
+          res.writeHead(503, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            jsonrpc: '2.0',
+            id: mcpRequest.id,
+            error: {
+              code: -32000,
+              message: 'Server initializing',
+              data: { status: 'starting' }
+            }
+          }));
+        } else {
+          // 无 id 的通知类消息，返回 200
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end('');
+        }
       } catch (err) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Invalid JSON-RPC request' }));
