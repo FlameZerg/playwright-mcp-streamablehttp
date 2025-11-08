@@ -375,40 +375,24 @@ proxyServer.keepAliveTimeout = 60000;
 proxyServer.headersTimeout = 60000;
 proxyServer.requestTimeout = 60000;
 
-// 启动流程（支持后台异步浏览器初始化）
+// 启动流程（立即启动后端，不等待浏览器检查）
 (async () => {
   try {
-    // 立即启动代理服务器（不等待浏览器）
-    proxyServer.listen(PORT, HOST, () => {
-      console.log(`✅ 代理服务器已启动: http://${HOST}:${PORT}`);
-      console.log('⏳ 等待浏览器初始化...');
+    // 立即启动 Playwright 后端
+    console.log('🚀 启动 Playwright MCP 后端...');
+    startPlaywrightBackend();
+    
+    // 等待后端就绪
+    waitForBackend(() => {
+      console.log('✅ 后端服务已就绪');
+      isBrowserInstalled = true; // 标记为已就绪
     });
     
-    // 后台等待浏览器初始化
-    const browserCheckInterval = setInterval(() => {
-      if (checkBrowserInstalled()) {
-        clearInterval(browserCheckInterval);
-        isBrowserInstalled = true;
-        console.log('✅ 浏览器初始化完成');
-        
-        // 启动 Playwright 后端
-        startPlaywrightBackend();
-        
-        // 等待后端就绪
-        waitForBackend(() => {
-          console.log('✅ 服务就绪');
-        });
-      }
-    }, 1000); // 每秒检查
-    
-    // 超时保护（60秒）
-    setTimeout(() => {
-      if (!isBrowserInstalled) {
-        clearInterval(browserCheckInterval);
-        console.error('❌ 浏览器初始化超时');
-        process.exit(1);
-      }
-    }, 60000);
+    // 启动代理服务器（并行）
+    proxyServer.listen(PORT, HOST, () => {
+      console.log(`✅ 代理服务器已启动: http://${HOST}:${PORT}`);
+      console.log(`   转发到: http://localhost:${BACKEND_PORT}`);
+    });
   } catch (err) {
     console.error(`❌ 启动失败: ${err.message}`);
     process.exit(1);
