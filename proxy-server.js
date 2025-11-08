@@ -302,8 +302,60 @@ const proxyServer = http.createServer((req, res) => {
   const urlPath = req.url.split('?')[0];
   const isMcpEndpoint = urlPath === '/mcp' || urlPath.startsWith('/mcp/');
   
-  // 对于 MCP 端点，始终转发（让后端处理重试逻辑）
-  // 对于非 MCP 端点，后端未就绪时返回 503
+  // MCP 端点：后端未就绪时返回 MCP 协议的初始化响应
+  if (isMcpEndpoint && req.method === 'POST' && !isBackendReady) {
+    let body = '';
+    req.on('data', chunk => body += chunk.toString());
+    req.on('end', () => {
+      try {
+        const mcpRequest = JSON.parse(body);
+        
+        // 仅处理 initialize 请求
+        if (mcpRequest.method === 'initialize') {
+          res.writeHead(200, { 
+            'Content-Type': 'application/json',
+            'Retry-After': '10'
+          });
+          res.end(JSON.stringify({
+            jsonrpc: '2.0',
+            id: mcpRequest.id,
+            result: {
+              protocolVersion: '2025-06-18',
+              capabilities: {
+                tools: {},
+                resources: {},
+                prompts: {}
+              },
+              serverInfo: {
+                name: 'playwright-mcp',
+                version: '0.0.45'
+              },
+              instructions: '浏览器正在初始化中，请稍候...'
+            }
+          }));
+          return;
+        }
+        
+        // 其他 MCP 请求：返回错误
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          jsonrpc: '2.0',
+          id: mcpRequest.id,
+          error: {
+            code: -32000,
+            message: 'Server initializing',
+            data: { status: 'starting' }
+          }
+        }));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid JSON-RPC request' }));
+      }
+    });
+    return;
+  }
+  
+  // 非 MCP 端点：后端未就绪时返回 503
   if (!isMcpEndpoint && !isBackendReady) {
     res.writeHead(503, { 'Content-Type': 'application/json', 'Retry-After': '10' });
     res.end(JSON.stringify({
