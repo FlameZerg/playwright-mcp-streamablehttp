@@ -305,6 +305,16 @@ const proxyServer = http.createServer((req, res) => {
   const urlPath = req.url.split('?')[0];
   const isMcpEndpoint = urlPath === '/mcp' || urlPath.startsWith('/mcp/');
   
+  // 非 MCP 端点：后端未就绪时返回 503
+  if (!isMcpEndpoint && !isBackendReady) {
+    res.writeHead(503, { 'Content-Type': 'application/json', 'Retry-After': '10' });
+    res.end(JSON.stringify({
+      error: 'Service starting',
+      message: '服务启动中，请稍后重试'
+    }));
+    return;
+  }
+
   // MCP 端点：后端未就绪时立即返回占位响应（兼容 Smithery scanner 10s 超时）
   if (isMcpEndpoint && req.method === 'POST' && !isBackendReady) {
     let body = '';
@@ -348,17 +358,7 @@ const proxyServer = http.createServer((req, res) => {
         res.end(JSON.stringify({ error: 'Invalid JSON-RPC request' }));
       }
     });
-    return;
-  }
-  
-  // 非 MCP 端点：后端未就绪时返回 503
-  if (!isMcpEndpoint && !isBackendReady) {
-    res.writeHead(503, { 'Content-Type': 'application/json', 'Retry-After': '10' });
-    res.end(JSON.stringify({
-      error: 'Service starting',
-      message: '服务启动中，请稍后重试'
-    }));
-    return;
+    return; // 阻止后续 forwardRequest 执行
   }
 
   forwardRequest(req, res);
