@@ -298,82 +298,12 @@ const proxyServer = http.createServer((req, res) => {
     return;
   }
 
-  // MCP 端点判断（支持查询参数）
-  const urlPath = req.url.split('?')[0];
-  const isMcpEndpoint = urlPath === '/mcp' || urlPath.startsWith('/mcp/');
-  
-  // MCP 端点：后端未就绪时返回 MCP 协议的初始化响应
-  if (isMcpEndpoint && req.method === 'POST' && !isBackendReady) {
-    let body = '';
-    req.on('data', chunk => body += chunk.toString());
-    req.on('end', () => {
-      try {
-        const mcpRequest = JSON.parse(body);
-        
-        // 处理 initialize 请求
-        if (mcpRequest.method === 'initialize') {
-          res.writeHead(200, { 
-            'Content-Type': 'application/json',
-            'Retry-After': '10'
-          });
-          res.end(JSON.stringify({
-            jsonrpc: '2.0',
-            id: mcpRequest.id,
-            result: {
-              protocolVersion: '2025-06-18',
-              capabilities: {
-                tools: {},
-                resources: {},
-                prompts: {}
-              },
-              serverInfo: {
-                name: 'playwright-mcp',
-                version: '0.0.45'
-              },
-              instructions: '浏览器正在初始化中，请稍候...'
-            }
-          }));
-          return;
-        }
-        
-        // 处理 notifications/*（通知类消息，无需响应）
-        if (mcpRequest.method && mcpRequest.method.startsWith('notifications/')) {
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(''); // 空响应，符合 JSON-RPC 2.0 规范
-          return;
-        }
-        
-        // 其他 MCP 请求：返回错误（仅当有 id 时）
-        if (mcpRequest.id !== undefined) {
-          res.writeHead(503, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            jsonrpc: '2.0',
-            id: mcpRequest.id,
-            error: {
-              code: -32000,
-              message: 'Server initializing',
-              data: { status: 'starting' }
-            }
-          }));
-        } else {
-          // 无 id 的通知类消息，返回 200
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end('');
-        }
-      } catch (err) {
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Invalid JSON-RPC request' }));
-      }
-    });
-    return;
-  }
-  
-  // 非 MCP 端点：后端未就绪时返回 503
-  if (!isMcpEndpoint && !isBackendReady) {
-    res.writeHead(503, { 'Content-Type': 'application/json', 'Retry-After': '10' });
+  // 后端未就绪时返回 503（方案 A 下不应该发生）
+  if (!isBackendReady) {
+    res.writeHead(503, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
-      error: 'Service starting',
-      message: '服务启动中，请稍后重试'
+      error: 'Service not ready',
+      message: 'Backend initialization incomplete'
     }));
     return;
   }
@@ -381,40 +311,51 @@ const proxyServer = http.createServer((req, res) => {
   forwardRequest(req, res);
 });
 
-// 启动流程（支持后台异步浏览器初始化）
+// 启动流程（方案 A：依赖 entrypoint.sh 预热）
 (async () => {
   try {
-    // 立即启动代理服务器（不等待浏览器）
+    // 验证浏览器已初始化
+    isBrowserInstalled = checkBrowserInstalled();
+    if (!isBrowserInstalled) {
+      console.error('❌ 浏览器未初始化！');
+      process.exit(1);
+    }
+    console.log('✅ 浏览器已就绪');
+    
+    // 验证后端已启动（等待最多 10 秒）
+    console.log('⏳ 等待后端就绪...');
+    let backendReady = false;
+    for (let i = 0; i < 10; i++) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      await new Promise((resolve) => {
+        checkBackendHealth((healthy) => {
+          if (healthy) {
+            backendReady = true;
+            isBackendReady = true;
+          }
+          resolve();
+        });
+      });
+      
+      if (backendReady) break;
+    }
+    
+    if (!backendReady) {
+      console.error('❌ 后端未就绪！');
+      process.exit(1);
+    }
+    
+    console.log('✅ 后端已就绪');
+    
+    // 启动代理服务器
     proxyServer.listen(PORT, HOST, () => {
       console.log(`✅ 代理服务器已启动: http://${HOST}:${PORT}`);
-      console.log('⏳ 等待浏览器初始化...');
+      console.log('✅ 服务全部就绪，开始接受请求');
+      
+      // 启动健康监控
+      startHealthMonitoring();
     });
-    
-    // 后台等待浏览器初始化
-    const browserCheckInterval = setInterval(() => {
-      if (checkBrowserInstalled()) {
-        clearInterval(browserCheckInterval);
-        isBrowserInstalled = true;
-        console.log('✅ 浏览器初始化完成');
-        
-        // 启动 Playwright 后端
-        startPlaywrightBackend();
-        
-        // 等待后端就绪
-        waitForBackend(() => {
-          console.log('✅ 服务就绪');
-        });
-      }
-    }, 1000); // 每秒检查
-    
-    // 超时保护（60秒）
-    setTimeout(() => {
-      if (!isBrowserInstalled) {
-        clearInterval(browserCheckInterval);
-        console.error('❌ 浏览器初始化超时');
-        process.exit(1);
-      }
-    }, 60000);
   } catch (err) {
     console.error(`❌ 启动失败: ${err.message}`);
     process.exit(1);

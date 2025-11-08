@@ -63,6 +63,9 @@ ENV PLAYWRIGHT_BROWSERS_BACKUP=/tmp/playwright-browsers-backup
 # Set the correct ownership for the runtime user on production `node_modules`
 RUN chown -R ${USERNAME}:${USERNAME} node_modules
 
+# 安装 netcat 用于端口检测
+RUN apt-get update && apt-get install -y netcat-openbsd && rm -rf /var/lib/apt/lists/*
+
 # 创建必要的目录结构
 RUN mkdir -p /app/browser-profile /tmp/playwright-output /tmp/playwright-browsers-backup /app/storage && \
   chown -R ${USERNAME}:${USERNAME} /app/browser-profile /tmp/playwright-output /tmp/playwright-browsers-backup /app/storage
@@ -86,14 +89,14 @@ RUN ls -la /tmp/playwright-browsers-backup || echo "Browser backup check" && \
 ENV HOST=0.0.0.0
 ENV PORT=8081
 
-# 健康检查 - 验证代理服务器可用
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+# 健康检查 - 验证代理服务器可用（方案 A：需要更长的预热时间）
+HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
   CMD node -e "const http = require('http'); \
     http.get('http://localhost:8081/health', (res) => { \
       process.exit(res.statusCode === 200 ? 0 : 1); \
     }).on('error', () => process.exit(1));"
 
-# 启动流程：浏览器初始化和服务启动并行（后台初始化，服务先响应）
+# 启动流程：方案 A - 同步预热后启动
 COPY --chown=${USERNAME}:${USERNAME} entrypoint.sh ./
 USER root
 RUN chmod +x entrypoint.sh
