@@ -36,6 +36,8 @@ COPY *.json *.js *.ts .
 # - Cache is reused when only source code changes
 FROM base AS browser
 
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
 RUN npx -y playwright-core install --no-shell chromium
 
 # ------------------------------
