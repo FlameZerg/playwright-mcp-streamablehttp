@@ -7,9 +7,8 @@ const agent = new http.Agent({ keepAlive: true, keepAliveMsecs: 60000, maxSocket
 const PORT = process.env.PORT || 8081;
 const HOST = '0.0.0.0';
 const BACKEND_PORT = 8082;
-const STARTUP_TIMEOUT = 58000; // 58秒启动超时（留 2s 缓冲）
-const HEALTH_CHECK_INTERVAL = 25000; // 25秒健康检查
-const REQUEST_TIMEOUT = 58000; // 58秒请求超时
+const STARTUP_TIMEOUT = 58000; // 58秒启动超时（仅首次启动）
+const REQUEST_TIMEOUT = 0; // 无超时（允许长期会话）
 const RETRY_DELAYS = [1000, 2000, 5000]; // 重试延迟：1s, 2s, 5s（指数退避）
 
 let isBackendReady = false;
@@ -80,8 +79,6 @@ function startPlaywrightBackend() {
     '--isolated',
     '--shared-browser-context',
     '--save-session',
-    '--timeout-action=58000',
-    '--timeout-navigation=58000',
     '--output-dir=/tmp/playwright-output'
   ], {
     stdio: ['ignore', 'pipe', 'pipe']
@@ -358,10 +355,10 @@ const proxyServer = http.createServer((req, res) => {
   forwardRequest(req, res);
 });
 
-// Server keep-alive and timeout tuning (58s)
-proxyServer.keepAliveTimeout = 58000;
-proxyServer.headersTimeout = 58000;
-proxyServer.requestTimeout = 58000;
+// Server keep-alive and timeout tuning (长期会话支持)
+proxyServer.keepAliveTimeout = 0; // 禁用 keep-alive 超时
+proxyServer.headersTimeout = 60000; // 仅限制头部读取 60s（防慢速攻击）
+proxyServer.requestTimeout = 0; // 无请求超时
 
 // 启动流程（立即启动后端，不等待浏览器检查）
 (async () => {

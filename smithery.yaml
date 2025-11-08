@@ -33,14 +33,6 @@ startCommand:
         enum: ["allow", "omit"]
         description: "Whether to send image responses to the client"
         default: "allow"
-      timeoutAction:
-        type: "number"
-        description: "Action timeout in milliseconds"
-        default: 58000
-      timeoutNavigation:
-        type: "number"
-        description: "Navigation timeout in milliseconds"
-        default: 58000
     additionalProperties: true
   exampleConfig:
     browserName: "chromium"
@@ -48,5 +40,3 @@ startCommand:
     capabilities: ["tabs", "install", "pdf", "vision"]
     outputDir: "/tmp/playwright-output"
     imageResponses: "allow"
-    timeoutAction: 58000
-    timeoutNavigation: 58000
