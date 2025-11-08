@@ -1,4 +1,4 @@
-## Playwright MCP
+### ★Playwright MCP★
 
 ## Call count
 [![smithery badge](https://smithery.ai/badge/@FlameZerg/playwright-mcp)](https://smithery.ai/server/@FlameZerg/playwright-mcp)
