@@ -298,11 +298,12 @@ const proxyServer = http.createServer((req, res) => {
     return;
   }
 
-  // 移除浏览器安装阻塞，让 Playwright 自己处理
-  // 如果浏览器缺失，Playwright 会返回错误信息
-
-  // 后端未就绪
-  const isMcpEndpoint = req.url === '/mcp' || req.url.startsWith('/mcp/');
+  // MCP 端点判断（支持查询参数）
+  const urlPath = req.url.split('?')[0];
+  const isMcpEndpoint = urlPath === '/mcp' || urlPath.startsWith('/mcp/');
+  
+  // 对于 MCP 端点，始终转发（让后端处理重试逻辑）
+  // 对于非 MCP 端点，后端未就绪时返回 503
   if (!isMcpEndpoint && !isBackendReady) {
     res.writeHead(503, { 'Content-Type': 'application/json', 'Retry-After': '10' });
     res.end(JSON.stringify({
