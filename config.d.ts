@@ -149,11 +149,6 @@ export type Config = {
     blockedOrigins?: string[];
   };
 
-  /**
-   * Specify the attribute to use for test ids, defaults to "data-testid".
-   */
-  testIdAttribute?: string;
-
   timeouts?: {
     /*
      * Configures default action timeout: https://playwright.dev/docs/api/class-page#page-set-default-timeout. Defaults to 5000ms.

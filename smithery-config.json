@@ -2,22 +2,15 @@
   "server": {
     "port": 8081,
     "host": "0.0.0.0",
-    "allowedHosts": ["*"],
-    "sharedBrowserContext": true
+    "allowedHosts": ["*"]
   },
   "browser": {
     "browserName": "chromium",
     "launchOptions": {
       "headless": true
-    },
-    "timeouts": {
-      "action": 30000,
-      "navigation": 60000
     }
   },
   "network": {
     "allowedOrigins": ["*"]
-  },
-  "outputDir": "/tmp/playwright-output",
-  "_comment": "storage-state 在多用户共享模式下通过 MCP 客户端动态管理，存储在 /app/storage/ 目录"
+  }
 }

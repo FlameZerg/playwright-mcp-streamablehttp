@@ -2,22 +2,6 @@ runtime: "container"
 build:
   dockerfile: "Dockerfile"
   dockerBuildPath: "."
-  # 确保构建缓存有效
-  context: "."
-# 持久化存储卷
-volumes:
-  # 浏览器缓存 - 首次启动从镜像复制，后续重启直接使用
-  - name: "playwright-browsers"
-    mountPath: "/ms-playwright"
-    retention: "24h"
-  # 输出目录 - 保存截图、PDF、trace 文件
-  - name: "playwright-output"
-    mountPath: "/tmp/playwright-output"
-    retention: "24h"
-  # 用户存储状态 - 保存多用户会话的 cookies/localStorage
-  - name: "playwright-storage"
-    mountPath: "/app/storage"
-    retention: "24h"
 startCommand:
   type: "http"
   configSchema:
@@ -38,7 +22,7 @@ startCommand:
           type: "string"
           enum: ["tabs", "install", "pdf", "vision"]
         description: "Additional capabilities to enable"
-        default: ["tabs", "install", "pdf", "vision"]
+        default: []
       outputDir:
         type: "string"
         description: "Directory for output files"
@@ -48,20 +32,10 @@ startCommand:
         enum: ["allow", "omit"]
         description: "Whether to send image responses to the client"
         default: "allow"
-      timeoutAction:
-        type: "number"
-        description: "Action timeout in milliseconds"
-        default: 30000
-      timeoutNavigation:
-        type: "number"
-        description: "Navigation timeout in milliseconds"
-        default: 60000
-    additionalProperties: true
+    additionalProperties: false
   exampleConfig:
     browserName: "chromium"
     headless: true
-    capabilities: ["tabs", "install", "pdf", "vision"]
+    capabilities: ["tabs", "pdf"]
     outputDir: "/tmp/playwright-output"
     imageResponses: "allow"
-    timeoutAction: 30000
-    timeoutNavigation: 60000

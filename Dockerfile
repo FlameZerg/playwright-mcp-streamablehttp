@@ -41,12 +41,7 @@ COPY *.json *.js *.ts .
 # - Cache is reused when only source code changes
 FROM base AS browser
 
-ARG PLAYWRIGHT_BROWSERS_PATH
-
-# 安装浏览器到备份目录（用于首次启动时复制到卷）
-RUN npx -y playwright-core install --no-shell chromium && \
-  ls -la ${PLAYWRIGHT_BROWSERS_PATH} && \
-  echo "✅ Browser installation completed"
+RUN npx -y playwright-core install --no-shell chromium
 
 # ------------------------------
 # Runtime
@@ -56,50 +51,20 @@ FROM base
 ARG PLAYWRIGHT_BROWSERS_PATH
 ARG USERNAME=node
 ENV NODE_ENV=production
-# 保障中文日志显示正常
-ENV LANG=C.UTF-8
-ENV LC_ALL=C.UTF-8
-ENV LANGUAGE=zh_CN:zh
-ENV PLAYWRIGHT_BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH}
 ENV PLAYWRIGHT_MCP_OUTPUT_DIR=/tmp/playwright-output
-ENV PLAYWRIGHT_BROWSERS_BACKUP=/tmp/playwright-browsers-backup
 
 # Set the correct ownership for the runtime user on production `node_modules`
 RUN chown -R ${USERNAME}:${USERNAME} node_modules
 
-# 创建必要的目录结构
-RUN mkdir -p /app/browser-profile /tmp/playwright-output /tmp/playwright-browsers-backup /app/storage && \
-  chown -R ${USERNAME}:${USERNAME} /app/browser-profile /tmp/playwright-output /tmp/playwright-browsers-backup /app/storage
-
 USER ${USERNAME}
 
-# 将浏览器复制到备份目录（镜像内保留副本）
-COPY --from=browser --chown=${USERNAME}:${USERNAME} ${PLAYWRIGHT_BROWSERS_PATH} /tmp/playwright-browsers-backup
-COPY --chown=${USERNAME}:${USERNAME} cli.js package.json smithery-config.json proxy-server.js verify-browser.js init-browser.sh ./
-
-# 设置脚本执行权限
-USER root
-RUN chmod +x init-browser.sh
-USER ${USERNAME}
-
-# 运行时验证备份
-RUN ls -la /tmp/playwright-browsers-backup || echo "Browser backup check" && \
-  echo "✅ Runtime stage ready"
+COPY --from=browser --chown=${USERNAME}:${USERNAME} ${PLAYWRIGHT_BROWSERS_PATH} ${PLAYWRIGHT_BROWSERS_PATH}
+COPY --chown=${USERNAME}:${USERNAME} cli.js package.json smithery-config.json proxy-server.js ./
 
 # Set environment variables to force binding to all interfaces
 ENV HOST=0.0.0.0
 ENV PORT=8081
 
-# 健康检查 - 验证代理服务器可用
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-  CMD node -e "const http = require('http'); \
-    http.get('http://localhost:8081/health', (res) => { \
-      process.exit(res.statusCode === 200 ? 0 : 1); \
-    }).on('error', () => process.exit(1));"
-
-# 启动流程：浏览器初始化和服务启动并行（后台初始化，服务先响应）
-COPY --chown=${USERNAME}:${USERNAME} entrypoint.sh ./
-USER root
-RUN chmod +x entrypoint.sh
-USER ${USERNAME}
-ENTRYPOINT ["./entrypoint.sh"]
+# Use proxy server to bind to 0.0.0.0 and forward to Playwright MCP server
+# This works around the server's hardcoded localhost binding
+ENTRYPOINT ["node", "proxy-server.js"]
