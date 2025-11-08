@@ -315,7 +315,7 @@ const proxyServer = http.createServer((req, res) => {
     return;
   }
 
-  // MCP 端点：后端未就绪时立即返回占位响应（兼容 Smithery scanner 10s 超时）
+  // MCP 端点：后端未就绪时返回 SSE 占位流（兼容 Smithery HTTP MCP 协议）
   if (isMcpEndpoint && req.method === 'POST' && !isBackendReady) {
     let body = '';
     req.on('data', chunk => body += chunk.toString());
@@ -324,19 +324,21 @@ const proxyServer = http.createServer((req, res) => {
         const mcpRequest = JSON.parse(body);
         const method = mcpRequest.method || '';
         
-        // notifications/* 单向消息：返回 200 OK（空响应）
+        // notifications/* 单向消息：返回 202 Accepted
         if (method.startsWith('notifications/') || !mcpRequest.id) {
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({}));
+          res.writeHead(202);
+          res.end();
           return;
         }
         
-        // 返回无能力的初始化响应（立即，不等待后端）
+        // 返回 SSE 流式占位响应
         res.writeHead(200, { 
-          'Content-Type': 'application/json',
-          'Retry-After': '5'
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive'
         });
-        res.end(JSON.stringify({
+        
+        const placeholderResponse = {
           jsonrpc: '2.0',
           id: mcpRequest.id,
           result: {
@@ -352,7 +354,11 @@ const proxyServer = http.createServer((req, res) => {
             },
             instructions: '浏览器正在初始化，请稍后重试（约 5-10 秒）'
           }
-        }));
+        };
+        
+        // SSE 格式: data: <json>\n\n
+        res.write(`data: ${JSON.stringify(placeholderResponse)}\n\n`);
+        res.end();
       } catch (err) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Invalid JSON-RPC request' }));
